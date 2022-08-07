@@ -1,0 +1,791 @@
+library(tidyverse)
+library(ggplot2)
+library(ggsci)
+library(texreg)
+library(countrycode)
+library(readxl)
+library(readr)
+library(sf)
+library(raster)
+library(ggmap)
+library(spatstat)
+library(rgeos)
+library(mediation)
+library(terra)
+library(rgdal)
+library(devtools)
+library(vdemdata)
+library(pastecs)
+library(xtable)
+library(stargazer)
+library(broom)
+library(haven)
+
+
+# Data Loading
+## ACLED
+#import ACLED Data
+acled1 <- read_csv("data/acled/acled1.csv")
+acled2 <- read_csv("data/acled/acled2.csv")
+
+acled <- rbind(acled1,acled2)
+
+#convert csv file to shapefile (Coordinate Reference System (CRS) = WGS84 (4326))
+acled <- st_as_sf(acled, coords=c("longitude","latitude"), crs = 4326)
+
+
+## Aqueduct 3.0
+aqua1 <- read_sf("data/Aqueduct/aqua1.gpkg")
+aqua2 <- read_sf("data/Aqueduct/aqua2.gpkg")
+
+aqua <- rbind(aqua1,aqua2)
+
+##Districts (Admin1)
+#workaround error
+sf::sf_use_s2(FALSE)
+#load states shapefile
+dis <- read_sf("data/states/ne_10m_admin_1_states_provinces.shp")
+
+dis <- dis %>%
+  dplyr::select(name,iso_a2) 
+
+#recode some regions to fit to recognized countries
+# dis <- dis %>%
+#   mutate(sov_a3 = ifelse(sov_a3=="SDS", "SSD",sov_a3),
+#          sov_a3 = ifelse(sov_a3=="SOL", "SOM",sov_a3),
+#          sov_a3 = ifelse(sov_a3=="SAH", "MAR",sov_a3))
+# 
+
+#load aqua
+water <- aqua 
+
+#assign shapefile admin_1 the nearest aqua
+dis <- st_join(dis,water,join=st_overlaps,left=TRUE,largest=TRUE)
+
+# dis<- na.omit(dis)
+dis <- dis %>%
+  mutate(country = countrycode(iso_a2, "iso2c", "country.name")) 
+
+#acled
+riots15 <- acled %>% 
+  dplyr::filter(event_type == "Riots",year == 2015) %>% 
+  dplyr::select(event_type) 
+
+protests15 <- acled %>% 
+  dplyr::filter(event_type == "Protests", year == 2015) %>% 
+  dplyr::select(event_type) 
+
+conflict5 <- acled %>%
+  filter(event_type == "Riots" | event_type == "Protests", year >= 2015, year <= 2020) %>%
+  dplyr::select(year, event_type)
+
+conflict5 <- acled %>%
+  filter(event_type == "Riots" | event_type == "Protests", year >= 2016, year <= 2021) %>%
+  dplyr::select(year, event_type)
+
+#dis <- st_join(dis,conflict,join=st_contains,left=TRUE)
+
+dis$riots15 <- lengths(st_intersects(dis,riots15))
+dis$protests15 <- lengths(st_intersects(dis,protests15))
+dis$conflict5 <- lengths(st_intersects(dis,conflict5))
+
+#load african countries ISO/NAME_0
+africa <- read_csv("data/africa/Africa_boundaries.csv")
+
+africa_code <- africa %>%
+  mutate(africa = TRUE) %>%
+  dplyr::select(ISO,africa)%>%
+  mutate(ISO=countrycode(ISO,"iso3c","iso2c"))
+
+#filter for africa
+dis <- left_join(dis,africa_code, by=c("iso_a2"="ISO"))
+
+#only countries with an agr weight score
+dis <- dis %>%
+  mutate(africa = ifelse(w_awr_agr_tot_score > 0,TRUE,FALSE)) %>%
+  filter(africa == TRUE)
+
+ID <- c(1:924)
+dis <- cbind(ID,dis)
+
+
+## Food Insecurity
+#load csv created by FoodInsecurity.R
+dis_sec <- read_csv("data/dis_sec.csv")
+
+dis_sec <- dis_sec %>%
+  mutate(food_sec = (sec15+sec16+sec17)/3)
+
+dis <-  left_join(dis,dis_sec, by="ID")
+
+
+##Population Density
+#density varible name V1
+density <- read_csv("data/density.csv")
+
+dis <- cbind(dis,density)
+
+density15 <- read_csv("data/density15.csv")
+
+density15 <- density15 %>%
+  rename("ID"="...1", "density15" = "V1")
+
+#add density15 to the dis data 
+dis <- left_join(dis,density15, by = "ID")
+
+# calculate the density change from 2015 to 2020
+dis <- dis %>%
+  mutate(density_change = V1 - density15)
+
+##Consumer Prices Indices 
+#load Consumer Price Indices food (baseline at 2015= 100%)
+CPI <- read_csv("data/faostat/ConsumerPriceIndices_E_Africa.csv")
+
+CPI_ISO <- read_xlsx("data/ISO.xlsx")
+
+CPI <- CPI %>%
+  filter(Months == "September",Item=="Consumer Prices, Food Indices (2015 = 100)")
+
+CPI <- cbind(CPI,CPI_ISO)
+CPI <- CPI %>%
+  dplyr::select(ISO,Y2000,Y2001,Y2002,Y2003,Y2004,Y2005,Y2006,
+                Y2007,Y2008,Y2009,Y2010,Y2011,Y2012,Y2013,Y2014,
+                Y2015,Y2016,Y2017,Y2018,Y2019,Y2020)
+
+#calculate changes of food consumer price per country per Year
+
+CPI <- CPI %>%
+  mutate(CPI_2015 = Y2015 - Y2014,
+         CPI_2016 = Y2016 - Y2015,
+         CPI_2017 = Y2017 - Y2016,
+         CPI_2018 = Y2018 - Y2017,
+         CPI_2019 = Y2019 - Y2018,
+         CPI_2020 = Y2020 - Y2019) %>%
+  mutate(CPI3 = CPI_2015+CPI_2016+CPI_2017)%>%
+  dplyr::select(ISO, CPI_2015,CPI_2016,CPI_2017,CPI_2018,CPI_2019,CPI_2020,CPI3)
+
+dis <- left_join(dis,CPI, by=c("country"="ISO"))
+```
+
+##Catastrophes
+cata <- read_csv("data/disaster/pend-gdis-1960-2018-disasterlocations.csv")
+
+cata <- st_as_sf(cata, coords=c("longitude","latitude"), crs = 4326)
+
+cata <- cata %>% dplyr::select(year,disastertype)
+
+#droughtsm floods and all catastrohes in the last 5 years 
+drought5 <- cata %>%
+  filter(disastertype== "drought",year >=2010, year <=2015)
+flood5 <- cata %>%
+  filter(disastertype == "flood",year >=2010, year <=2015)
+
+cata5 <- cata %>%
+  filter(year >=2010, year <=2015)
+
+dis$cata5 <- lengths(st_intersects(dis,cata5))
+dis$flood5 <- lengths(st_intersects(dis,flood5))
+dis$drought5 <- lengths(st_intersects(dis,drought5))
+
+##Vdem Data
+#install vdem data package
+#devtools::install_github("vdeminstitute/vdemdata")
+
+#assign vdem data to vdem 
+vdem <- vdem
+
+vdem_15 <- vdem %>%
+  dplyr::select(country_name,year,v2x_partipdem,e_gdppc) %>%
+  filter(year==2014) %>%
+  rename("partipdem" = "v2x_partipdem", "gdp" = "e_gdppc") %>%
+  mutate(ISO= countrycode(country_name,"country.name","iso2c")) %>%
+  dplyr::select(ISO,partipdem, gdp)
+
+
+dis <- left_join(dis,vdem_15, by=c("iso_a2"="ISO"))
+
+
+#select countries with civil wars since 2000
+vdem_war <- vdem %>%
+  dplyr::select(country_name,year, e_civil_war) %>%
+  filter(e_civil_war == 1) %>%
+  filter(year >= 2000) %>%
+  dplyr::select(country_name) %>%
+  distinct() %>%
+  mutate(civil = 1,ISO= countrycode(country_name,"country.name","iso2c")) 
+
+
+dis <- left_join(dis,vdem_war, by=c("iso_a2"="ISO"))
+
+#code countries with civil war since 2000 with 1 else 0
+dis <- dis %>%
+  mutate(civil = replace_na(dis$civil,0))
+
+dis <- dis %>%
+  mutate(civil_cat = ifelse(civil==1, "Civil War","No Civil War"))
+
+
+##State fragility index
+fsi <- read_xlsx("data/fsi-2014.xlsx")
+
+fsi <- fsi %>%
+  dplyr::select(Country, Total) %>%
+  mutate(ISO = countrycode(fsi$Country,"country.name","iso3c")) %>%
+  rename("fsi" = "Total")
+
+dis <- left_join(dis,fsi,by=c("iso_a2"="ISO"))
+
+
+# Data Analysis
+##Describtive statistics
+dis_stat <- dis %>%
+  dplyr::select(w_awr_agr_tot_score,bws_score, bwd_score, drr_score, cata5,flood5, drought5, CPI3,food_sec,conflict5,density_change,density15,partipdem, gdp, fsi, civil)
+
+st_geometry(dis_stat) <- NULL
+
+stargazer(dis_stat)
+
+##Moderated Mediation 
+###Main Analysis by Table
+####Table1 Agriculture Weight 
+#Agriculture OLS and Poission regression for CPI
+agr_cpi_con_1 <- lm(CPI3 ~ w_awr_agr_tot_score+ density15 +  fsi+gdp, data=dis)
+agr_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + w_awr_agr_tot_score+  density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+#Agriculture OLS and Poisson regression fod food security
+agr_sec_con_1 <- lm(food_sec ~  w_awr_agr_tot_score+density15 + fsi + gdp, data=dis)
+agr_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + w_awr_agr_tot_score+ density15+ partipdem + fsi + civil + gdp, data = dis, family=poisson())
+
+
+stargazer(agr_cpi_con_1,agr_cpi_con_2,agr_sec_con_1,agr_sec_con_2,
+          style="ajps",
+          order = "w_awr_agr_tot_score",
+          covariate.labels = c("Agr. Score","Food Price","Food Security","Pop. Density Change","Pop. Density","Democracy","FSI","Civil War", "GDP","Food Price: Pop. Density Change","Food Security:Pop. Density Change"),
+          title = "Water Stress Effect on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+#Figure for showing mediation
+agr_cpi_con_med <- mediate(agr_cpi_con_1,agr_cpi_con_2, treat = "w_awr_agr_tot_score", mediator = "CPI3",  sims = 1000)
+
+summary(agr_cpi_con_med)
+
+
+agr_sec_con_med <- mediate(agr_sec_con_1,agr_sec_con_2,treat = "w_awr_agr_tot_score", mediator = "food_sec", sims = 1000)
+
+summary(agr_sec_con_med)
+
+
+
+####Table2 Catastrophes as IV
+cata5_cpi_con_1 <- lm(CPI3 ~ cata5+density15 +  fsi+gdp, data=dis)
+cata5_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + cata5 + density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+cata5_sec_con_1 <- lm(food_sec ~ cata5+density15 +  fsi+gdp, data=dis)
+cata5_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + cata5 + density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(cata5_cpi_con_1,cata5_cpi_con_2,cata5_sec_con_1,cata5_sec_con_2,
+          style = "ajps",
+          order = "cata5",
+          covariate.labels = c("Catastrophes","Food Price", "Food Security","Pop. Density Change","Pop. Density","Democracy", "FSI", "Civil War",  "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "The effect of Catastrophes on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+
+#Figure for showing mediation
+cata5_cpi_con_med <- mediate(cata5_cpi_con_1,cata5_cpi_con_2, treat = "cata5", mediator = "CPI3",  sims = 1000)
+
+summary(cata5_cpi_con_med)
+
+
+cata5_sec_con_med <- mediate(cata5_sec_con_1,cata5_sec_con_2,treat = "cata5", mediator = "food_sec",sims = 1000)
+
+summary(cata5_sec_con_med)
+
+
+
+####Appendix tables
+
+#BWS
+
+bws_cpi_con_1 <- lm(CPI3 ~ bws_score+density15 +  fsi+gdp, data=dis)
+bws_cpi_con_2 <- glm(conflict5 ~ CPI3 *density_change+ bws_score+ + density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+bws_sec_con_1 <- lm(food_sec ~ bws_score+density15 +  fsi+gdp, data=dis)
+bws_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + bws_score+ + density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(bws_cpi_con_1,bws_cpi_con_2,bws_sec_con_1,bws_sec_con_2 ,
+          style = "ajps",
+          order = "bws_score",
+          covariate.labels = c("Baseline Water Stress","Food Price", "Food Security","Pop. Density Change","Pop. Density","Democracy", "FSI", "Civil War",  "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "Effect of Baseline Water Stress on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+#BWD
+bwd_cpi_con_1 <- lm(CPI3 ~ bwd_score+density15 +  fsi+gdp, data=dis)
+bwd_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + bwd_score+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+bwd_sec_con_1 <- lm(food_sec ~ bwd_score+density15 +  fsi+gdp, data=dis)
+bwd_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + bwd_score+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(bwd_cpi_con_1,bwd_cpi_con_2,bwd_sec_con_1,bwd_sec_con_2,
+          style = "ajps",
+          order = "bwd_score",
+          covariate.labels = c("Baseline Water Depletion","Food Price", "Food Security","Pop. Density Change","Pop. Density","Democracy", "FSI", "Civil War",  "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "Effect of Baseline Water Depletion on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+#DRR
+drr_cpi_con_1 <- lm(CPI3 ~ drr_score+density15 +  fsi+gdp, data=dis)
+drr_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + drr_score+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+drr_sec_con_1 <- lm(food_sec ~ drr_score+density15 +  fsi+gdp, data=dis)
+drr_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + drr_score+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(drr_cpi_con_1,drr_cpi_con_2,drr_sec_con_1,drr_sec_con_2,
+          style = "ajps",
+          order = "drr_score",
+          covariate.labels = c("Drought Risk","Food Price", "Food Security","Pop. Density Change","Pop. Density", "Democracy", "FSI", "Civil War", "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "The effect of Drought Risk on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+#floods
+flood_cpi_con_1 <- lm(CPI3 ~ flood5+density15 +  fsi+gdp, data=dis)
+flood_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + flood5+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+flood_sec_con_1 <- lm(food_sec ~ flood5+density15 +  fsi+gdp, data=dis)
+flood_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + flood5+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(flood_cpi_con_1,flood_cpi_con_2,flood_sec_con_1,flood_sec_con_2,
+          style = "ajps",
+          order = "flood5",
+          covariate.labels = c("Floods","Food Price", "Food Security","Pop. Density Change","Pop. Density","Democracy", "FSI", "Civil War",  "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "The effect of Floods on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+
+
+#droughts
+drought_cpi_con_1 <- lm(CPI3 ~ drought5+density15 +  fsi+gdp, data=dis)
+drought_cpi_con_2 <- glm(conflict5 ~ CPI3*density_change + drought5+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+drought_sec_con_1 <- lm(food_sec ~ drought5+density15 +  fsi+gdp, data=dis)
+drought_sec_con_2 <- glm(conflict5 ~ food_sec*density_change + drought5+ density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+stargazer(drought_cpi_con_1,drought_cpi_con_2,drought_sec_con_1,drought_sec_con_2,
+          style = "ajps",
+          order = "drought5",
+          covariate.labels = c("Droughts","Food Price", "Food Security","Pop. Density Change","Pop. Density", "Democracy", "FSI", "Civil War",  "GDP","Food Price: Pop. Density Change","Food Security: Pop. Density Change"),
+          title = "The effect of Droughts on Conflict mediated by Food Consumer Price Index and Food Security and moderated by the Population Density Change"
+)
+
+#Prediction
+
+
+dis <- dis %>%
+  rename("ws" = "w_awr_agr_tot_score")
+
+model <- glm(conflict5 ~ CPI3*density_change + ws+  density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+summary(model)
+
+# Minimum seat share
+min_ws <- min(dis$ws) 
+# Maximum seat share
+max_ws <- max(dis$ws)
+#sepcify scenario
+df_scenario_2 <- tibble(
+  CPI3 = mean(dis$CPI3,na.rm=TRUE),
+  density_change = mean(dis$density_change,na.rm=TRUE),
+  ws = seq(min_ws, max_ws, by = 0.01), # min & max party size
+  density15 = median(dis$density15,na.rm=TRUE),
+  partipdem = mean(dis$partipdem,na.rm=TRUE),
+  fsi = mean(dis$fsi,na.rm=TRUE),
+  civil = mean(dis$civil,na.rm=TRUE),
+  gdp = mean(dis$gdp,na.rm=TRUE),
+)
+
+df_scenario <- tibble(
+  CPI3 = mean(dis$CPI3,na.rm=TRUE),
+  density_change = mean(dis$density_change,na.rm=TRUE),
+  ws = c(min_ws, max_ws), # min & max party size
+  density15 = median(dis$density15,na.rm=TRUE),
+  partipdem = mean(dis$partipdem,na.rm=TRUE),
+  fsi = mean(dis$fsi,na.rm=TRUE),
+  civil = mean(dis$civil,na.rm=TRUE),
+  gdp = mean(dis$gdp,na.rm=TRUE),
+)
+
+# get predictions for the scenario of interest
+pred_values <- predict(model, newdata = df_scenario_2, type = "response", se.fit = FALSE)
+pred_values
+# rounded
+pred_values %>% round(2)
+
+
+
+# Let's bind seatshare range and predicted values together
+toplot <- bind_cols(
+  # our data on the x-axis
+  ws = df_scenario_2$ws
+  # our data on the y-axis
+  , pred_val = pred_values)
+
+# Multiple values by 100 for a more intuitive presentation
+# toplot <- toplot %>% 
+#   mutate(ws = ws*100
+#          , pred_val = pred_val*100
+#          )
+
+summary(model)
+
+#model <- model%>%tidy()
+
+# Plot
+ggplot(toplot) + 
+  geom_jitter(aes(x = ws, y = pred_val),width=mean(model$std.error)*5,height=0,alpha=.5) + 
+  geom_line(aes(x = ws, y = pred_val),size=1,color="darkgreen",alpha=.6) + 
+  theme_minimal() + 
+  labs(x = "Water Score Agr. Weight", y = "Conflict events per state/district"
+       , title = "Effect of water stress on Conflict per state")
+
+#from session 10
+model <- glm(conflict5 ~ CPI3*density_change + ws+  density15 + partipdem + fsi + civil  + gdp, data = dis, family=poisson())
+
+model %>% tidy() %>%
+  mutate(conf.low = estimate - qnorm(0.975) * std.error
+         , conf.high = estimate + qnorm(0.975) * std.error) 
+
+# Minimum seat share
+min_ws <- min(dis$ws) 
+# Maximum seat share
+max_ws <- max(dis$ws)
+# over the range of seat shares as observed in our data
+df_scenario <- tibble(
+  CPI3 = mean(dis$CPI3,na.rm=TRUE),
+  density_change = mean(dis$density_change,na.rm=TRUE),
+  ws = seq(min_ws, max_ws, by = 0.1), # min & max party size
+  density15 = median(dis$density15,na.rm=TRUE),
+  partipdem = mean(dis$partipdem,na.rm=TRUE),
+  fsi = mean(dis$fsi,na.rm=TRUE),
+  civil = mean(dis$civil,na.rm=TRUE),
+  gdp = mean(dis$gdp,na.rm=TRUE),
+)
+
+# Store predicted mean response
+# ===========================
+df_expected <- predict(model, new = df_scenario, interval =  "confidence") %>% 
+  as_tibble() 
+
+# merge the corresponding scenario data to the predicted values
+# ===========================
+toplot <- df_expected %>%
+  bind_cols(df_scenario)
+
+# Plot , what is fit? lwr ? upr? where are they from
+# ===========================
+ggplot(toplot) + 
+  geom_line(aes(ws, value)) +
+  #geom_ribbon(aes(ws, value),  alpha = 0.2) +
+  theme_minimal() + 
+  labs(y = "Expected value", x = "seat share", title = "Expected values of government opposition", subtitle = "Conditional on party size") 
+
+
+
+#Visualizations
+#conflict development
+cot <- acled %>%
+  filter(event_type =="Protests" | event_type=="Riots") %>%
+  dplyr::select(year, event_type,country,region) 
+
+st_geometry(cot) <- NULL
+
+cot <- cot %>%
+  group_by(year,country) %>%
+  count(event_type)
+
+acled_region <- acled %>%
+  dplyr::select(country,region) %>%
+  distinct()
+
+cot <- left_join(cot,acled_region,by="country")
+
+ggplot(cot, aes(year,n,color=region)) +
+  geom_smooth(method = 'glm', method.args = list(family = 'poisson'))+
+  labs(y = "Protests and Riots", x = "Year",
+       title = "Amount of Protests and Riots per Year",
+       color = "Region")+
+  scale_color_uchicago()+
+  theme(
+    legend.position="bottom")+
+  theme_bw()
+
+#ggsave("ConflictDevAfrica.png",width=16, height=9,units="cm",dpi=1000)
+
+```
+##Appendix Maps
+#aqueduct variables
+ggplot() +
+  geom_sf(data=dis,aes(fill=bws_score))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Baseline \nWater \nStress",
+       title= "Baseline Water Stress in Africa per district"
+  )+
+  theme_bw()+
+  theme()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("bws.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=bwd_score))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Baseline \nWater \nDepletion",
+       title= "Baseline Water Depletion in Africa per district"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("bwd.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=drr_score))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Drought \nRisk",
+       title= "Drought Risk in Africa per district"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("drr.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=w_awr_agr_tot_score))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Agriculture \nWater \nStress",
+       title= "Agriculture weighted Water Stress in Africa per district"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("agr.png",width=16, height=16,units="cm",dpi=1000)
+
+
+#catastrophes
+ggplot() +
+  geom_sf(data=dis,aes(fill=cata5))+
+  scale_fill_viridis_c(direction=1,option="viridis",trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Number of \nCatastrophes",
+       title= "Floods and Droughts in Africa per district", 
+       subtitle = "From 2010 - 2015"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+
+#ggsave("cata.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data = dis %>% filter(flood5 > 20))+
+  geom_sf(data=dis %>% filter(flood5 < 20),aes(fill=flood5))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Number of \nFloods",
+       title= "Floods in Africa per district", 
+       subtitle = "From 2010 - 2015 (without Outlier)"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("bws.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis ,aes(fill=flood5))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Number of \nFloods",
+       title= "Floods in Africa per district", 
+       subtitle = "From 2010 - 2015 "
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("flood.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=drought5))+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Number of \nDroughts",
+       title= "Droughts in Africa per district", 
+       subtitle = "From 2010 - 2015"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("drought.png",width=16, height=16,units="cm",dpi=1000)
+
+
+#Food Consumer Price Index
+ggplot() +
+  geom_sf(data=dis,aes(fill=CPI3))+
+  scale_fill_viridis_c(direction=1,option="viridis",trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Price Increase \nin Percent",
+       title= "Food Prices Increase in Africa", 
+       subtitle = "From 2015-2017"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("cpi.png",width=16, height=16,units="cm",dpi=1000)
+
+
+#Food Insecurity
+ggplot() +
+  geom_sf(data=dis,aes(fill=food_sec))+
+  scale_fill_viridis_c(direction=1,option="viridis",trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Food Insecurity \nScale",
+       title= "Food Insecurity in Africa", 
+       subtitle = "From 2015-2017"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("sec.png",width=16, height=16,units="cm",dpi=1000)
+
+
+#Conflict
+ggplot() +
+  geom_sf(data=dis,aes(fill=conflict5))+
+  scale_fill_viridis_c(direction=1,option="viridis",trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Number of Events",
+       title= "Protests and Riots in Africa", 
+       subtitle = "From 2016-2021"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("conflict.png",width=16, height=16,units="cm",dpi=1000)
+
+
+#control variables
+ggplot() +
+  geom_sf(data=dis,aes(fill=partipdem))+
+  scale_fill_viridis_c(direction=1,option="viridis",trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Democracy Score",
+       title= "State of Participatory Democracies in Africa", 
+       subtitle = "Year 2014"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("dem.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=civil_cat))+
+  scale_fill_viridis_d(option = "V",direction=-1,begin=0) +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(title= "Countries that experienced a Cvil War since 2000",
+       fill=""
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("civil.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=gdp))+
+  scale_fill_viridis_c(option = "V",direction=1,trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(title= "GDP per Capita in Africa",
+       subtitle = "Year 2014",
+       fill="GDP"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("gdp.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=V1),color=NA)+
+  scale_fill_viridis_c(option = "V",direction=1,trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(title= "Population Density per adminstrative subdivision",
+       subtitle = "Year 2020",
+       fill="Population \nDensity"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("density.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=density_change),color=NA)+
+  scale_fill_viridis_c(option = "V",direction=1,trans="log") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(title= "Population Density Change per adminstrative subdivision",
+       subtitle = "From 2015 to 2020",
+       fill="People per \nsquared Km"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("density_change.png",width=16, height=16,units="cm",dpi=1000)
+
+
+ggplot() +
+  geom_sf(data=dis,aes(fill=fsi))+
+  scale_fill_viridis_c(option = "V",direction=1) +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(title= "Fragility State Index per Country",
+       subtitle = "Year 2014",
+       fill="FSI Index"
+  )+
+  theme_bw()+
+  theme(
+    legend.position=c(.2,.27)
+  )
+#ggsave("fsi.png",width=16, height=16,units="cm",dpi=1000)
