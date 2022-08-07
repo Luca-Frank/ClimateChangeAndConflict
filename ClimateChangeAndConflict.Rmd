@@ -123,6 +123,13 @@ dis$conflict5 <- lengths(st_intersects(dis,conflict5))
 ```
 
 ```{r}
+#load african countries ISO/NAME_0
+africa <- read_csv("data/africa/Africa_boundaries.csv")
+
+africa_code <- africa %>%
+  mutate(africa = TRUE) %>%
+  dplyr::select(ISO,africa)
+
 #filter for africa
 dis <- left_join(dis,africa_code, by=c("sov_a3"="ISO"))
 
