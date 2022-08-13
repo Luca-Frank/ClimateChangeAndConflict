@@ -10,11 +10,18 @@ Figure 1: Development of Protests and Riots in different Regions in Africa betwe
 </p>
 
 ## Water Stress
-![AquaBWS](https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/bwsOG.png)
-![AquaAGR](https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/agrOG.png)
+From the [Aqueduct 3.0](https://www.wri.org/research/aqueduct-30-updated-decision-relevant-global-water-risk-indicators) Dataset Figure 2 and 3 show the raw data of the baseline water stress and the water stress for the agricultural industry. For the latter index, 13 water related indicators have been weighted to the more accurately describe the water stress for the agricultural industry. More on the methodology is in the [documentation for Aqueduct 3.0](https://files.wri.org/d8/s3fs-public/aqueduct-30-updated-decision-relevant-global-water-risk-indicators_1.pdf). 
+<p float="left">
+  <img src="https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/bwsOG.png" width="500" />
+  <img src="https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/agrOG.png" width="500" /> 
+</p>
 
-![BWS](https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/bws.png)
-![AGR](https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/agr.png)
+The Aqueduct 3.0 has the geomeotry type of Multipolygon, which is not compatible with other datasets. Therefore, I restructed the Aqueduct to fit onto [districts](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/). Which is also useful for adding political variables.
+<p float="left">
+  <img src="https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/bws.png" width="500" />
+  <img src="https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/7626d7f0d4161bd143226a3549a596ec387f2302/plots/agr.png" width="500" /> 
+</p>
+
 
 ## Catastrophes
 
