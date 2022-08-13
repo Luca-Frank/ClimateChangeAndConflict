@@ -12,7 +12,7 @@ knitr::opts_chunk$set(eval = TRUE, echo = TRUE, error = FALSE, warning = FALSE, 
 
 ```{r load-packages, results='hide',echo=FALSE}
 # Install and load required packages
-p_required <- c("tidyverse","ggplot2",  "texreg", "countrycode","readxl","readr","sf","raster","ggmap","tmap","svglite","spatstat","geojson","rgeos","terra","mediation","terra","devtools","pastecs","xtable","ggsci","stargazer")  
+p_required <- c("tidyverse","ggplot2",  "texreg", "countrycode","readxl","readr","sf","raster","ggmap","tmap","svglite","spatstat","geojson","rgeos","terra","mediation","terra","devtools","pastecs","xtable","ggsci","stargazer","beepr")  
 packages <- rownames(installed.packages())
 p_to_install <- p_required[!(p_required %in% packages)]
 if (length(p_to_install) > 0) {
@@ -44,6 +44,7 @@ library(stargazer)
 library(broom)
 library(haven)
 library(ggdark)
+library(beepr)
 ```
 
 # Data Loading
@@ -605,8 +606,43 @@ ggsave("plots/ConflictDevAfrica.png",plot= conflict,width=20, height=10,units="c
 ##Appendix Maps
 ```{r}
 #aqueduct variables
-ggplot() +
+AquaBWS <- ggplot() +
   geom_sf(data=water,aes(fill=bws_score),color=NA)+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Baseline \nWater \nStress",
+       title= "Baseline Water Stress in Africa"
+  )+
+  dark_theme_bw()+
+  theme()+
+  theme(
+    legend.position=c(.2,.27),
+    rect = element_rect(fill = "transparent"),
+    panel.background = element_rect(fill = "transparent"),
+    panel.grid = element_line(color=NA)
+  )
+ggsave(AquaBWS,filename="plots/bwsOG.png",width=16, height=16,units="cm",dpi=1000)
+
+AquaAgr <- ggplot() +
+  geom_sf(data=water,aes(fill=w_awr_agr_tot_score),color=NA)+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Baseline \nWater \nStress",
+       title= "Baseline Water Stress in Africa \nweighted for the agricultural industry"
+  )+
+  dark_theme_bw()+
+  theme()+
+  theme(
+    legend.position=c(.2,.27),
+    rect = element_rect(fill = "transparent"),
+    panel.background = element_rect(fill = "transparent"),
+    panel.grid = element_line(color=NA)
+  )
+AquaAgr
+ggsave(AquaAgr,filename="plots/agrOG.png",width=16, height=16,units="cm",dpi=1000)
+
+bws <- ggplot() +
+  geom_sf(data=dis,aes(fill=bws_score),color=NA)+
   scale_fill_viridis_c(direction=1,option="viridis") +
   coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
   labs(fill= "Baseline \nWater \nStress",
@@ -617,9 +653,30 @@ ggplot() +
   theme(
     legend.position=c(.2,.27),
     rect = element_rect(fill = "transparent"),
-    panel.background = element_rect(fill = "transparent")
+    panel.background = element_rect(fill = "transparent"),
+    panel.grid = element_line(color=NA)
   )
-ggsave("plots/bwsOG.png",width=16, height=16,units="cm",dpi=1000)
+bws
+ggsave(bws,filename="plots/bws.png",width=16, height=16,units="cm",dpi=1000)
+
+agr <- ggplot() +
+  geom_sf(data=dis,aes(fill=w_awr_agr_tot_score),color=NA)+
+  scale_fill_viridis_c(direction=1,option="viridis") +
+  coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
+  labs(fill= "Baseline \nWater \nStress",
+       title= "Baseline Water Stress in Africa \nweighted for the agricultural industry \nper district"
+  )+
+  dark_theme_bw()+
+  theme()+
+  theme(
+    legend.position=c(.2,.27),
+    rect = element_rect(fill = "transparent"),
+    panel.background = element_rect(fill = "transparent"),
+    panel.grid = element_line(color=NA)
+  )
+agr
+ggsave(agr,filename="plots/agr.png",width=16, height=16,units="cm",dpi=1000)
+
 ```
 
 ```{r,eval=FALSE}
