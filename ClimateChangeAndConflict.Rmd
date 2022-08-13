@@ -557,7 +557,6 @@ ggplot(toplot) +
 
 #Visualizations
 ```{r, eval=FALSE}
-library(beepr)
 #conflict development
 cot <- acled %>%
   filter(event_type =="Protests" | event_type=="Riots") %>%
@@ -611,7 +610,7 @@ AquaBWS <- ggplot() +
   scale_fill_viridis_c(direction=1,option="viridis") +
   coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
   labs(fill= "Baseline \nWater \nStress",
-       title= "Baseline Water Stress in Africa"
+       title= "Baseline Water Stress in Africa", tag = "Figure 2"
   )+
   dark_theme_bw()+
   theme()+
@@ -628,7 +627,7 @@ AquaAgr <- ggplot() +
   scale_fill_viridis_c(direction=1,option="viridis") +
   coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
   labs(fill= "Baseline \nWater \nStress",
-       title= "Baseline Water Stress in Africa \nweighted for the agricultural industry"
+       title= "Baseline Water Stress in Africa (Agricultural Industry)", tag = "Figure 3"
   )+
   dark_theme_bw()+
   theme()+
@@ -646,7 +645,7 @@ bws <- ggplot() +
   scale_fill_viridis_c(direction=1,option="viridis") +
   coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
   labs(fill= "Baseline \nWater \nStress",
-       title= "Baseline Water Stress in Africa per district"
+       title= "Baseline Water Stress in Africa per district", tag = "Figure 4"
   )+
   dark_theme_bw()+
   theme()+
@@ -664,7 +663,8 @@ agr <- ggplot() +
   scale_fill_viridis_c(direction=1,option="viridis") +
   coord_sf(xlim=c(-17,50), ylim=c(-33,35), expand = TRUE)+
   labs(fill= "Baseline \nWater \nStress",
-       title= "Baseline Water Stress in Africa \nweighted for the agricultural industry \nper district"
+       title= "Baseline Water Stress in Africa per district (Agricultural Industry)",
+       tag = "Figure 5"
   )+
   dark_theme_bw()+
   theme()+
@@ -677,11 +677,10 @@ agr <- ggplot() +
 agr
 ggsave(agr,filename="plots/agr.png",width=16, height=16,units="cm",dpi=1000)
 
+beep()
 ```
 
 ```{r,eval=FALSE}
-
-
 
 #aqueduct variables
 ggplot() +
