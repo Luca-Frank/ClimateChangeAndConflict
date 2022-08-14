@@ -24,8 +24,20 @@ The Aqueduct 3.0 has the geomeotry type of Multipolygon, which is not compatible
 
 
 ## Catastrophes
+In addition looking at water stress levels, the total amount of catastrophes, specifically droughts and floods are calculated per district. The data is from the [Geocoded Disaster (GDIS) Dataset](https://sedac.ciesin.columbia.edu/data/set/pend-gdis-1960-2018).
+<p float="left">
+  <img src="plots/flood.png" width="400" />
+  <img src="plots/drought.png" width="400" /> 
+</p>
+
 
 ## Additional Variables
+For the moderated mediation models, multiple control variables are added. Such as food Insecurity by [Food Insecurity Hotspots Dataset](https://sedac.ciesin.columbia.edu/data/set/food-food-insecurity-hotspots), which captures food insecurity with the  [FEWS NET Food Insecurity Severity Scale (FNFIS)](https://sedac.ciesin.columbia.edu/downloads/docs/food/food-food-insecurity-hotspots-documentation.pdf) that  ranges from 1, generally food secure to 5, famine. The Population density per district is from the [Africa Continental Population Dataset (2000 - 2020)](https://github.com/Luca-Frank/ClimateChangeAndConflict/blob/e9f6edd24b1485605966ba0b57a7b5c48d5e2564/data/AfricaPopulation/Population%20Codebook.pdf).
+
+<p float="left">
+  <img src="plots/inscecurity.png" width="400" />
+  <img src="plots/density.png" width="400" /> 
+</p>
 
 ## Models
 
